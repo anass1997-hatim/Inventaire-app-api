@@ -1,87 +1,122 @@
+import logging
+from psycopg2 import IntegrityError
+from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.viewsets import ModelViewSet
-from rest_framework import status
-from .models import Produit, Categorie, Depot, ChampsPersonnalises
-from .serializers import ProduitSerializer, CategorieSerializer, DepotSerializer
+from .models import Produit, Categorie, ChampsPersonnalises, SousCategorie, Famille, SousFamille, Marque, Model
+from .serializers import (
+    ProduitSerializer, ProduitCreateUpdateSerializer, CategorieSerializer,
+    ChampsPersonnalisesSerializer, SousCategorieSerializer,
+    FamilleSerializer, SousFamilleSerializer, MarqueSerializer, ModelSerializer
+)
 
-class ProduitViewSet(ModelViewSet):
+class ProduitViewSet(viewsets.ModelViewSet):
     queryset = Produit.objects.all()
-    serializer_class = ProduitSerializer
     lookup_field = 'reference'
-    lookup_url_kwarg = 'reference'
+    serializer_class = ProduitSerializer
 
-    def destroy(self, request, *args, **kwargs):
-        instance = self.get_object()
-        self.perform_destroy(instance)
-        return Response(status=status.HTTP_204_NO_CONTENT)
+    def get_serializer_class(self):
+        if self.action in ['create', 'update']:
+            return ProduitCreateUpdateSerializer
+        return ProduitSerializer
 
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        self.perform_create(serializer)
-        return Response(
-            serializer.data,
-            status=status.HTTP_201_CREATED,
-            headers={"Location": f"/produits/{serializer.instance.pk}"}
-        )
-
-    def update(self, request, reference=None, *args, **kwargs):
-        partial = kwargs.pop('partial', False)
-        instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
-        serializer.is_valid(raise_exception=True)
-        self.perform_update(serializer)
-        return Response(serializer.data)
-
-    def get_object(self):
-        queryset = self.filter_queryset(self.get_queryset())
-        lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
-        filter_kwargs = {self.lookup_field: self.kwargs[lookup_url_kwarg]}
-        obj = queryset.get(**filter_kwargs)
-        self.check_object_permissions(self.request, obj)
-        return obj
-
-
-class CategorieViewSet(ModelViewSet):
+class CategorieViewSet(viewsets.ModelViewSet):
     queryset = Categorie.objects.all()
     serializer_class = CategorieSerializer
+    lookup_field = 'idCategorie'
 
-class DepotViewSet(ModelViewSet):
-    queryset = Depot.objects.all()
-    serializer_class = DepotSerializer
+class ChampsPersonnalisesViewSet(viewsets.ModelViewSet):
+    queryset = ChampsPersonnalises.objects.all()
+    serializer_class = ChampsPersonnalisesSerializer
+    lookup_field = 'idChampsPersonnalises'
 
+class SousCategorieViewSet(ModelViewSet):
+    queryset = SousCategorie.objects.all()
+    serializer_class = SousCategorieSerializer
 
-EXCEL_TO_JSON_MAPPING = {
-    "Référence": "reference",
-    "Type": "type",
-    "Code Barres": "codeBarres",
-    "Unité Type": "uniteType",
-    "Prix Vente TTC": "prixVenteTTC",
-    "Description": "description",
-    "Catégorie": "categorie",
-    "Dépôt": "depot",
-    "Quantité": "quantite",
-    "Code RFID": "codeRFID",
-    "Date Affectation": "dateAffectation",
-    "Date Péremption": "datePeremption"
-}
+    def get_queryset(self):
+        categorie_id = self.kwargs.get('categorie_idCategorie')
+        if categorie_id:
+            return self.queryset.filter(categorie_id=categorie_id)
+        return self.queryset
 
+class FamilleViewSet(viewsets.ModelViewSet):
+    queryset = Famille.objects.all()
+    serializer_class = FamilleSerializer
+    lookup_field = 'idFamille'
+
+class SousFamilleViewSet(viewsets.ModelViewSet):
+    queryset = SousFamille.objects.all()
+    serializer_class = SousFamilleSerializer
+    lookup_field = 'idSousFamille'
+
+    def get_queryset(self):
+        famille_id = self.kwargs.get('famille_idFamille')
+        if famille_id:
+            return self.queryset.filter(famille_id=famille_id)
+        return self.queryset
+
+class MarqueViewSet(viewsets.ModelViewSet):
+    queryset = Marque.objects.all()
+    serializer_class = MarqueSerializer
+    lookup_field = 'idMarque'
+
+class ModelViewSet(viewsets.ModelViewSet):
+    queryset = Model.objects.all()
+    serializer_class = ModelSerializer
+    lookup_field = 'idModel'
+
+    def get_queryset(self):
+        marque_id = self.kwargs.get('marque_idMarque')
+        if marque_id:
+            return self.queryset.filter(marque_id=marque_id)
+        return self.queryset
 
 def preprocess_excel_data(data):
+    EXCEL_TO_JSON_MAPPING = {
+        "Référence": "reference",
+        "Type": "type",
+        "Code Barres": "codeBarres",
+        "Unité Type": "uniteType",
+        "Prix Vente TTC": "prixVenteTTC",
+        "Description": "description",
+        "Catégorie": "categorie",
+        "Sous Catégorie": "sousCategorie",
+        "Marque": "marque",
+        "Model": "model",
+        "Famille": "famille",
+        "Sous Famille": "sousFamille",
+        "Taille": "taille",
+        "Couleur": "couleur",
+        "Poids": "poids",
+        "Volume": "volume",
+        "Dimensions": "dimensions"
+    }
+
     processed_data = []
     for row in data:
-        processed_row = {EXCEL_TO_JSON_MAPPING.get(key, key): value for key, value in row.items()}
+        processed_row = {
+            EXCEL_TO_JSON_MAPPING.get(key, key): value for key, value in row.items()
+        }
         processed_data.append(processed_row)
     return processed_data
 
-
-import logging
-
-logger = logging.getLogger(__name__)
-
-
 class BulkUploadView(APIView):
+    def _get_model_instance(self, model_class, name_field, name_value, parent=None, parent_field=None):
+        if not name_value:
+            return None
+
+        filter_kwargs = {name_field: name_value}
+        if parent and parent_field:
+            filter_kwargs[parent_field] = parent
+
+        try:
+            instance = model_class.objects.get(**filter_kwargs)
+            return instance
+        except model_class.DoesNotExist:
+            return None
+
     def post(self, request):
         raw_products = request.data.get('products', [])
         if not isinstance(raw_products, list):
@@ -91,129 +126,66 @@ class BulkUploadView(APIView):
             )
 
         products = preprocess_excel_data(raw_products)
-        validation_results = []
         created_products = []
+        validation_results = []
 
         for product in products:
             try:
-                # Debug incoming data
-                logger.debug(f"Processing product: {product}")
+                categorie = self._get_model_instance(Categorie, 'categorie', product.get('categorie', {}).get('categorie'))
+                if not categorie:
+                    raise ValueError(f"Categorie '{product.get('categorie', {}).get('categorie')}' not found in database")
 
-                # Process "categorie"
-                categorie_data = product.get('categorie', {})
-                if isinstance(categorie_data, dict):
-                    categorie, created = Categorie.objects.get_or_create(
-                        categorie=categorie_data.get('categorie')
-                    )
-                elif isinstance(categorie_data, str):
-                    categorie, created = Categorie.objects.get_or_create(
-                        categorie=categorie_data
-                    )
-                else:
-                    raise ValueError("Invalid categorie format.")
+                sous_categorie = self._get_model_instance(SousCategorie, 'sousCategorie', product.get('champsPersonnalises', {}).get('sousCategorie'), categorie, 'categorie')
+                marque = self._get_model_instance(Marque, 'marque', product.get('champsPersonnalises', {}).get('marque'))
+                model = self._get_model_instance(Model, 'model', product.get('champsPersonnalises', {}).get('model'), marque, 'marque') if marque else None
+                famille = self._get_model_instance(Famille, 'famille', product.get('champsPersonnalises', {}).get('famille'))
+                sous_famille = self._get_model_instance(SousFamille, 'sousFamille', product.get('champsPersonnalises', {}).get('sousFamille'), famille, 'famille') if famille else None
 
-                categorie_dict = {
-                    'idCategorie': categorie.idCategorie,
-                    'categorie': categorie.categorie
+                champs_personnalises_data = {
+                    'sousCategorie': getattr(sous_categorie, 'idSousCategorie', None),
+                    'marque': getattr(marque, 'idMarque', None),
+                    'model': getattr(model, 'idModel', None),
+                    'famille': getattr(famille, 'idFamille', None),
+                    'sousFamille': getattr(sous_famille, 'idSousFamille', None),
+                    'taille': product.get('champsPersonnalises', {}).get('taille'),
+                    'couleur': product.get('champsPersonnalises', {}).get('couleur'),
+                    'poids': product.get('champsPersonnalises', {}).get('poids'),
+                    'volume': product.get('champsPersonnalises', {}).get('volume'),
+                    'dimensions': product.get('champsPersonnalises', {}).get('dimensions')
                 }
 
-                # Process "depot"
-                depot_data = product.get('depot', {})
-                if isinstance(depot_data, dict):
-                    depot, created = Depot.objects.get_or_create(
-                        depot=depot_data.get('depot')
-                    )
-                elif isinstance(depot_data, str):
-                    depot, created = Depot.objects.get_or_create(
-                        depot=depot_data
-                    )
-                else:
-                    raise ValueError("Invalid depot format.")
+                prix_vente = product.get("prixVenteTTC")
+                if isinstance(prix_vente, str):
+                    prix_vente = float(prix_vente.replace(',', '.'))
 
-                depot_dict = {
-                    'idDepot': depot.idDepot,
-                    'depot': depot.depot
-                }
-
-                # Process "champsPersonnalises"
-                champs_personnalises_data = product.get('champsPersonnalises')
-                champs_personnalises_dict = None
-
-                logger.debug(f"champs_personnalises_data: {champs_personnalises_data}")
-
-                if champs_personnalises_data:
-                    champs_personnalises = ChampsPersonnalises.objects.create(
-                        sousCategorie=champs_personnalises_data.get('sousCategorie'),
-                        marque=champs_personnalises_data.get('marque'),
-                        model=champs_personnalises_data.get('model'),
-                        famille=champs_personnalises_data.get('famille'),
-                        sousFamille=champs_personnalises_data.get('sousFamille'),
-                        taille=champs_personnalises_data.get('taille'),
-                        couleur=champs_personnalises_data.get('couleur'),
-                        poids=champs_personnalises_data.get('poids'),
-                        volume=champs_personnalises_data.get('volume'),
-                        dimensions=champs_personnalises_data.get('dimensions')
-                    )
-
-                    champs_personnalises_dict = {
-                        'idChampsPersonnales': champs_personnalises.idChampsPersonnales,
-                        'sousCategorie': champs_personnalises.sousCategorie,
-                        'marque': champs_personnalises.marque,
-                        'model': champs_personnalises.model,
-                        'famille': champs_personnalises.famille,
-                        'sousFamille': champs_personnalises.sousFamille,
-                        'taille': champs_personnalises.taille,
-                        'couleur': champs_personnalises.couleur,
-                        'poids': champs_personnalises.poids,
-                        'volume': champs_personnalises.volume,
-                        'dimensions': champs_personnalises.dimensions
-                    }
-
-                logger.debug(f"champs_personnalises_dict: {champs_personnalises_dict}")
-
-                # Prepare product data
                 product_data = {
-                    'reference': product.get('reference'),
-                    'type': product.get('type'),
-                    'codeBarres': product.get('codeBarres'),
-                    'description': product.get('description'),
-                    'uniteType': product.get('uniteType'),
-                    'prixVenteTTC': product.get('prixVenteTTC'),
-                    'quantite': int(product.get('quantite', 0)),
-                    'codeRFID': product.get('codeRFID', ''),
-                    'dateAffectation': product.get('dateAffectation'),
-                    'datePeremption': product.get('datePeremption'),
-                    'categorie': categorie_dict,
-                    'depot': depot_dict,
+                    "reference": product.get("reference"),
+                    "type": product.get("type"),
+                    "codeBarres": product.get("codeBarres"),
+                    "uniteType": product.get("uniteType"),
+                    "prixVenteTTC": prix_vente if prix_vente else 0,
+                    "description": product.get("description") or "",
+                    "categorie": categorie.idCategorie if categorie else None,
+                    "champsPersonnalises": champs_personnalises_data
                 }
 
-                # Add "champsPersonnalises" if present
-                if champs_personnalises_dict:
-                    product_data['champsPersonnalises'] = champs_personnalises_dict
-
-                # Debug final product data
-                logger.debug(f"Final product_data: {product_data}")
-
-                # Validate and save the product
-                serializer = ProduitSerializer(data=product_data)
+                serializer = ProduitCreateUpdateSerializer(data=product_data)
                 if serializer.is_valid():
                     serializer.save()
-                    created_products.append(serializer.data)
+                    response_serializer = ProduitSerializer(serializer.instance)
+                    created_products.append(response_serializer.data)
                 else:
                     validation_results.append({
                         'data': product,
                         'errors': serializer.errors
                     })
-                    logger.error(f"Validation errors: {serializer.errors}")
 
             except Exception as e:
-                logger.error(f"Error processing product: {str(e)}")
                 validation_results.append({
                     'data': product,
-                    'error': str(e)
+                    'errors': str(e)
                 })
 
-        # Return response
         if not created_products:
             return Response(
                 {

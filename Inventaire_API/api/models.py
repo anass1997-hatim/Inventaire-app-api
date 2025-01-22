@@ -12,24 +12,16 @@ class Produit(models.Model):
         ('Pièce', 'Pièce'),
         ('Douzaine', 'Douzaine')
     ])
-    prixVenteTTC  = models.FloatField()
+    prixVenteTTC = models.FloatField()
     description = models.TextField()
     categorie = models.ForeignKey(
         'Categorie', on_delete=models.CASCADE,
         related_name='produits', null=True
     )
-    depot = models.ForeignKey(
-        'Depot', null=True , on_delete=models.SET_NULL
+    champsPersonnalises = models.ForeignKey(
+        'ChampsPersonnalises', on_delete=models.CASCADE,
+        related_name='produits', null=True
     )
-
-    champsPersonnalises = models.ForeignKey (
-         'ChampsPersonnalises',  on_delete=models.CASCADE,related_name='champsPersonnalises'
-        , null=True
-    )
-    quantite = models.IntegerField()
-    codeRFID = models.CharField(max_length=100, null=True, blank=True)
-    dateAffectation = models.DateField(null=True, blank=True)
-    datePeremption = models.DateField(null=True, blank=True)
     dateCreation = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -38,7 +30,7 @@ class Produit(models.Model):
 
 class Categorie(models.Model):
     idCategorie = models.BigAutoField(primary_key=True)
-    categorie = models.CharField(max_length=100 )
+    categorie = models.CharField(max_length=100)
 
     def __str__(self):
         return self.categorie
@@ -49,7 +41,7 @@ class Categorie(models.Model):
 
 class Depot(models.Model):
     idDepot = models.BigAutoField(primary_key=True)
-    depot = models.CharField(max_length=100 )
+    depot = models.CharField(max_length=100)
 
     def __str__(self):
         return self.depot
@@ -58,14 +50,23 @@ class Depot(models.Model):
         db_table = "depot"
 
 
-
 class ChampsPersonnalises(models.Model):
-    idChampsPersonnales = models.BigAutoField(primary_key=True)
-    sousCategorie = models.CharField(max_length=100, null=True)
-    marque = models.CharField(max_length=100, null=True)
-    model = models.CharField(max_length=100, null=True)
-    famille = models.CharField(max_length=100, null=True)
-    sousFamille = models.CharField(max_length=100, null=True)
+    idChampsPersonnalises = models.BigAutoField(primary_key=True)
+    sousCategorie = models.ForeignKey(
+        'SousCategorie', on_delete=models.SET_NULL, null=True, related_name="champs"
+    )
+    marque = models.ForeignKey(
+        'Marque', on_delete=models.SET_NULL, null=True, related_name="champs"
+    )
+    model = models.ForeignKey(
+        'Model', on_delete=models.SET_NULL, null=True, related_name="champs"
+    )
+    famille = models.ForeignKey(
+        'Famille', on_delete=models.SET_NULL, null=True, related_name="champs"
+    )
+    sousFamille = models.ForeignKey(
+        'SousFamille', on_delete=models.SET_NULL, null=True, related_name="champs"
+    )
     taille = models.CharField(max_length=100, null=True)
     couleur = models.CharField(max_length=100, null=True)
     poids = models.CharField(max_length=100, null=True)
@@ -74,3 +75,67 @@ class ChampsPersonnalises(models.Model):
 
     class Meta:
         db_table = "champs_personnalises"
+
+
+class SousCategorie(models.Model):
+    idSousCategorie = models.BigAutoField(primary_key=True)
+    sousCategorie = models.CharField(max_length=100)
+    categorie = models.ForeignKey(
+        'Categorie', on_delete=models.CASCADE, related_name="sousCategories"
+    )
+
+    def __str__(self):
+        return self.sousCategorie
+
+    class Meta:
+        db_table = "sous_categorie"
+
+
+class Famille(models.Model):
+    idFamille = models.BigAutoField(primary_key=True)
+    famille = models.CharField(max_length=100)
+
+    def __str__(self):
+        return self.famille
+
+    class Meta:
+        db_table = "famille"
+
+
+class SousFamille(models.Model):
+    idSousFamille = models.BigAutoField(primary_key=True)
+    sousFamille = models.CharField(max_length=100)
+    famille = models.ForeignKey(
+        'Famille', on_delete=models.CASCADE, related_name="sousFamilles"
+    )
+
+    def __str__(self):
+        return self.sousFamille
+
+    class Meta:
+        db_table = "sous_famille"
+
+
+class Marque(models.Model):
+    idMarque = models.BigAutoField(primary_key=True)
+    marque = models.CharField(max_length=100)
+
+    def __str__(self):
+        return self.marque
+
+    class Meta:
+        db_table = "marque"
+
+
+class Model(models.Model):
+    idModel = models.BigAutoField(primary_key=True)
+    model = models.CharField(max_length=100)
+    marque = models.ForeignKey(
+        'Marque', on_delete=models.CASCADE, related_name="models"
+    )
+
+    def __str__(self):
+        return self.model
+
+    class Meta:
+        db_table = "model"

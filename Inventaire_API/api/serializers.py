@@ -1,118 +1,147 @@
-from rest_framework import serializers, viewsets
-from rest_framework.response import Response
-from .models import Produit, Categorie, Depot, ChampsPersonnalises
+from rest_framework import serializers
+from .models import (
+    Produit, Categorie, ChampsPersonnalises,
+    SousCategorie, Famille, SousFamille, Marque, Model
+)
+
+class SousCategorieSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SousCategorie
+        fields = ['idSousCategorie', 'sousCategorie', 'categorie']
+
+class FamilleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Famille
+        fields = ['idFamille', 'famille']
+
+class SousFamilleSerializer(serializers.ModelSerializer):
+    famille = FamilleSerializer()
+    class Meta:
+        model = SousFamille
+        fields = ['idSousFamille', 'sousFamille', 'famille']
+
+class MarqueSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Marque
+        fields = ['idMarque', 'marque']
+
+class ModelSerializer(serializers.ModelSerializer):
+    marque = MarqueSerializer()
+    class Meta:
+        model = Model
+        fields = ['idModel', 'model', 'marque']
 
 class ChampsPersonnalisesSerializer(serializers.ModelSerializer):
+    sousCategorie = SousCategorieSerializer(read_only=True)
+    marque = MarqueSerializer(read_only=True)
+    model = ModelSerializer(read_only=True)
+    famille = FamilleSerializer(read_only=True)
+    sousFamille = SousFamilleSerializer(read_only=True)
     class Meta:
         model = ChampsPersonnalises
         fields = [
-            'idChampsPersonnales', 'sousCategorie', 'marque', 'model', 'famille', 'sousFamille',
-            'taille', 'couleur', 'poids', 'volume', 'dimensions'
+            'idChampsPersonnalises', 'sousCategorie', 'marque', 'model',
+            'famille', 'sousFamille', 'taille', 'couleur', 'poids', 'volume', 'dimensions'
         ]
-        read_only_fields = ['idChampsPersonnales']
 
 class CategorieSerializer(serializers.ModelSerializer):
     class Meta:
         model = Categorie
         fields = ['idCategorie', 'categorie']
 
-class DepotSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Depot
-        fields = ['idDepot', 'depot']
-
 class ProduitSerializer(serializers.ModelSerializer):
-    categorie = CategorieSerializer()
-    depot = DepotSerializer()
-    champsPersonnalises = ChampsPersonnalisesSerializer(required=False, allow_null=True)
-
+    categorie = CategorieSerializer(read_only=True)
+    champsPersonnalises = ChampsPersonnalisesSerializer(read_only=True)
     class Meta:
         model = Produit
         fields = [
-            'reference', 'type', 'codeBarres', 'description', 'uniteType',
-            'prixVenteTTC', 'categorie', 'depot', 'quantite', 'codeRFID',
-            'dateAffectation', 'datePeremption', 'champsPersonnalises'
+            'reference', 'type', 'codeBarres', 'uniteType', 'prixVenteTTC', 'description',
+            'categorie', 'champsPersonnalises', 'dateCreation'
+        ]
+
+class ChampsPersonnalisesCreateUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ChampsPersonnalises
+        fields = [
+            'sousCategorie', 'marque', 'model',
+            'famille', 'sousFamille', 'taille',
+            'couleur', 'poids', 'volume', 'dimensions'
+        ]
+
+    def validate(self, attrs):
+        pk_mapping = {
+            'sousCategorie': ('idSousCategorie', SousCategorie),
+            'marque': ('idMarque', Marque),
+            'model': ('idModel', Model),
+            'famille': ('idFamille', Famille),
+            'sousFamille': ('idSousFamille', SousFamille)
+        }
+
+        for field in pk_mapping:
+            if field in attrs and attrs[field]:
+                pk_name, model_class = pk_mapping[field]
+                pk_value = getattr(attrs[field], pk_name)
+                if not model_class.objects.filter(**{pk_name: pk_value}).exists():
+                    raise serializers.ValidationError({
+                        field: f"{field} with {pk_name}={pk_value} does not exist."
+                    })
+        return attrs
+
+class ProduitCreateUpdateSerializer(serializers.ModelSerializer):
+    champsPersonnalises = ChampsPersonnalisesCreateUpdateSerializer(required=False)
+    class Meta:
+        model = Produit
+        fields = [
+            'reference', 'type', 'codeBarres', 'uniteType',
+            'prixVenteTTC', 'description', 'categorie',
+            'champsPersonnalises'
         ]
 
     def create(self, validated_data):
-        categorie_data = validated_data.pop('categorie')
-        depot_data = validated_data.pop('depot')
         champs_personnalises_data = validated_data.pop('champsPersonnalises', None)
-        categorie, _ = Categorie.objects.get_or_create(**categorie_data)
-        depot, _ = Depot.objects.get_or_create(**depot_data)
-        champs_personnalises = None
+        produit = Produit.objects.create(**validated_data)
+
         if champs_personnalises_data:
-            champs_personnalises, _ = ChampsPersonnalises.objects.get_or_create(**champs_personnalises_data)
-        produit = Produit.objects.create(
-            categorie=categorie,
-            depot=depot,
-            champsPersonnalises=champs_personnalises,
-            **validated_data
-        )
+            cleaned_data = {}
+            for key, value in champs_personnalises_data.items():
+                if value == "":
+                    cleaned_data[key] = None
+                else:
+                    if key in ['sousCategorie', 'marque', 'model', 'famille', 'sousFamille']:
+                        cleaned_data[key] = value
+                    else:
+                        cleaned_data[key] = value
+
+            champs_personnalises = ChampsPersonnalises.objects.create(**cleaned_data)
+            produit.champsPersonnalises = champs_personnalises
+            produit.save()
+
         return produit
 
     def update(self, instance, validated_data):
-        categorie_data = validated_data.pop('categorie', None)
-        depot_data = validated_data.pop('depot', None)
         champs_personnalises_data = validated_data.pop('champsPersonnalises', None)
-        if categorie_data:
-            categorie, _ = Categorie.objects.get_or_create(
-                categorie=categorie_data.get('categorie'),
-                defaults={'idCategorie': categorie_data.get('idCategorie')}
-            )
-            instance.categorie = categorie
-        if depot_data:
-            depot, _ = Depot.objects.get_or_create(
-                depot=depot_data.get('depot'),
-                defaults={'idDepot': depot_data.get('idDepot')}
-            )
-            instance.depot = depot
-        if champs_personnalises_data is not None:
-            if instance.champsPersonnalises:
-                for key, value in champs_personnalises_data.items():
-                    setattr(instance.champsPersonnalises, key, value)
-                instance.champsPersonnalises.save()
-            else:
-                champs_personnalises = ChampsPersonnalises.objects.create(**champs_personnalises_data)
-                instance.champsPersonnalises = champs_personnalises
+
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
 
+        if champs_personnalises_data:
+            cleaned_data = {}
+            for key, value in champs_personnalises_data.items():
+                if value == "":
+                    cleaned_data[key] = None
+                else:
+                    if key in ['sousCategorie', 'marque', 'model', 'famille', 'sousFamille']:
+                        cleaned_data[key] = value
+                    else:
+                        cleaned_data[key] = value
+
+            if instance.champsPersonnalises:
+                for attr, val in cleaned_data.items():
+                    setattr(instance.champsPersonnalises, attr, val)
+                instance.champsPersonnalises.save()
+            else:
+                champs_personnalises = ChampsPersonnalises.objects.create(**cleaned_data)
+                instance.champsPersonnalises = champs_personnalises
+
         instance.save()
         return instance
-
-
-
-class ProduitViewSet(viewsets.ModelViewSet):
-    queryset = Produit.objects.all()
-    serializer_class = ProduitSerializer
-    lookup_field = 'reference'
-    lookup_url_kwarg = 'reference'
-
-    def update(self, request, reference=None, *args, **kwargs):
-        partial = kwargs.pop('partial', False)
-        instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
-        serializer.is_valid(raise_exception=True)
-        self.perform_update(serializer)
-        return Response(serializer.data)
-
-    def get_object(self):
-        queryset = self.filter_queryset(self.get_queryset())
-        lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
-        filter_kwargs = {self.lookup_field: self.kwargs[lookup_url_kwarg]}
-        obj = queryset.get(**filter_kwargs)
-        self.check_object_permissions(self.request, obj)
-        return obj
-
-
-class CategorieViewSet(viewsets.ModelViewSet):
-    queryset = Categorie.objects.all()
-    serializer_class = CategorieSerializer
-    lookup_field = 'idCategorie'
-
-class DepotViewSet(viewsets.ModelViewSet):
-    queryset = Depot.objects.all()
-    serializer_class = DepotSerializer
-    lookup_field = 'idDepot'
-
