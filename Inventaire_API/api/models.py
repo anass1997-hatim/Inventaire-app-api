@@ -1,17 +1,33 @@
 from django.db import models
+class TypeProduit(models.Model):
+    nom = models.CharField(max_length=50, unique=True)
+
+    def __str__(self):
+        return self.nom
+
+    class Meta:
+        db_table = "type_produit"
+
+
+class UniteType(models.Model):
+    nom = models.CharField(max_length=50, unique=True)
+
+    def __str__(self):
+        return self.nom
+
+    class Meta:
+        db_table = "unite_type"
+
 
 class Produit(models.Model):
     reference = models.CharField(max_length=100, primary_key=True)
-    type = models.CharField(max_length=50, choices=[
-        ('Revente', 'Revente'),
-        ('Immobilisation', 'Immobilisation'),
-        ('Equipement', 'Equipement')
-    ])
+    type = models.ForeignKey(
+        'TypeProduit', on_delete=models.SET_NULL, null=True, related_name='produits'
+    )
     codeBarres = models.CharField(max_length=100)
-    uniteType = models.CharField(max_length=50, choices=[
-        ('Pièce', 'Pièce'),
-        ('Douzaine', 'Douzaine')
-    ])
+    uniteType = models.ForeignKey(
+        'UniteType', on_delete=models.SET_NULL, null=True, related_name='produits'
+    )
     prixVenteTTC = models.FloatField()
     description = models.TextField()
     categorie = models.ForeignKey(

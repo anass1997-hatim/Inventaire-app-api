@@ -4,11 +4,11 @@ from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.viewsets import ModelViewSet
-from .models import Produit, Categorie, ChampsPersonnalises, SousCategorie, Famille, SousFamille, Marque, Model
+from .models import Produit, Categorie, ChampsPersonnalises, SousCategorie, Famille, SousFamille, Marque, Model, TypeProduit, UniteType
 from .serializers import (
     ProduitSerializer, ProduitCreateUpdateSerializer, CategorieSerializer,
     ChampsPersonnalisesSerializer, SousCategorieSerializer,
-    FamilleSerializer, SousFamilleSerializer, MarqueSerializer, ModelSerializer
+    FamilleSerializer, SousFamilleSerializer, MarqueSerializer, ModelSerializer, TypeProduitSerializer, UniteTypeSerializer
 )
 
 class ProduitViewSet(viewsets.ModelViewSet):
@@ -73,6 +73,16 @@ class ModelViewSet(viewsets.ModelViewSet):
             return self.queryset.filter(marque_id=marque_id)
         return self.queryset
 
+class TypeProduitViewSet(viewsets.ModelViewSet):
+    queryset = TypeProduit.objects.all()
+    serializer_class = TypeProduitSerializer
+    lookup_field = 'id'
+
+class UniteTypeViewSet(viewsets.ModelViewSet):
+    queryset = UniteType.objects.all()
+    serializer_class = UniteTypeSerializer
+    lookup_field = 'id'
+
 def preprocess_excel_data(data):
     EXCEL_TO_JSON_MAPPING = {
         "Référence": "reference",
@@ -102,20 +112,25 @@ def preprocess_excel_data(data):
         processed_data.append(processed_row)
     return processed_data
 
+
 class BulkUploadView(APIView):
-    def _get_model_instance(self, model_class, name_field, name_value, parent=None, parent_field=None):
-        if not name_value:
+    def _get_or_create_instance(self, model_class, lookup_field, lookup_value,
+                                parent=None, parent_field=None,
+                                create_if_not_exists=True):
+        if not lookup_value:
             return None
 
-        filter_kwargs = {name_field: name_value}
+        filter_kwargs = {lookup_field: lookup_value}
         if parent and parent_field:
             filter_kwargs[parent_field] = parent
 
         try:
-            instance = model_class.objects.get(**filter_kwargs)
-            return instance
+            return model_class.objects.get(**filter_kwargs)
         except model_class.DoesNotExist:
-            return None
+            if create_if_not_exists:
+                return model_class.objects.create(**filter_kwargs)
+            else:
+                return None
 
     def post(self, request):
         raw_products = request.data.get('products', [])
@@ -126,47 +141,98 @@ class BulkUploadView(APIView):
             )
 
         products = preprocess_excel_data(raw_products)
+
         created_products = []
         validation_results = []
 
         for product in products:
             try:
-                categorie = self._get_model_instance(Categorie, 'categorie', product.get('categorie', {}).get('categorie'))
-                if not categorie:
-                    raise ValueError(f"Categorie '{product.get('categorie', {}).get('categorie')}' not found in database")
+                type_str = product.get('type', None)
+                type_obj = self._get_or_create_instance(
+                    TypeProduit, 'nom', type_str, create_if_not_exists=True
+                )
 
-                sous_categorie = self._get_model_instance(SousCategorie, 'sousCategorie', product.get('champsPersonnalises', {}).get('sousCategorie'), categorie, 'categorie')
-                marque = self._get_model_instance(Marque, 'marque', product.get('champsPersonnalises', {}).get('marque'))
-                model = self._get_model_instance(Model, 'model', product.get('champsPersonnalises', {}).get('model'), marque, 'marque') if marque else None
-                famille = self._get_model_instance(Famille, 'famille', product.get('champsPersonnalises', {}).get('famille'))
-                sous_famille = self._get_model_instance(SousFamille, 'sousFamille', product.get('champsPersonnalises', {}).get('sousFamille'), famille, 'famille') if famille else None
+                unite_str = product.get('uniteType', None)
+                unite_obj = self._get_or_create_instance(
+                    UniteType, 'nom', unite_str, create_if_not_exists=True
+                )
 
-                champs_personnalises_data = {
-                    'sousCategorie': getattr(sous_categorie, 'idSousCategorie', None),
-                    'marque': getattr(marque, 'idMarque', None),
-                    'model': getattr(model, 'idModel', None),
-                    'famille': getattr(famille, 'idFamille', None),
-                    'sousFamille': getattr(sous_famille, 'idSousFamille', None),
-                    'taille': product.get('champsPersonnalises', {}).get('taille'),
-                    'couleur': product.get('champsPersonnalises', {}).get('couleur'),
-                    'poids': product.get('champsPersonnalises', {}).get('poids'),
-                    'volume': product.get('champsPersonnalises', {}).get('volume'),
-                    'dimensions': product.get('champsPersonnalises', {}).get('dimensions')
-                }
+                cat_data = product.get('categorie', {})
+                cat_name = cat_data.get('categorie')
+                categorie = self._get_or_create_instance(
+                    Categorie, 'categorie', cat_name, create_if_not_exists=True
+                )
 
-                prix_vente = product.get("prixVenteTTC")
+                champs_data = product.get('champsPersonnalises', {})
+
+                sous_cat_name = champs_data.get('sousCategorie')
+                sous_categorie = self._get_or_create_instance(
+                    SousCategorie,
+                    'sousCategorie',
+                    sous_cat_name,
+                    parent=categorie,
+                    parent_field='categorie',
+                    create_if_not_exists=True
+                )
+
+                marque_name = champs_data.get('marque')
+                marque_obj = self._get_or_create_instance(
+                    Marque, 'marque', marque_name, create_if_not_exists=True
+                )
+
+                model_name = champs_data.get('model')
+                model_obj = None
+                if model_name:
+                    model_obj = self._get_or_create_instance(
+                        Model,
+                        'model',
+                        model_name,
+                        parent=marque_obj,
+                        parent_field='marque',
+                        create_if_not_exists=True
+                    )
+
+                famille_name = champs_data.get('famille')
+                famille_obj = self._get_or_create_instance(
+                    Famille, 'famille', famille_name, create_if_not_exists=True
+                )
+
+                sous_famille_name = champs_data.get('sousFamille')
+                sous_famille_obj = None
+                if sous_famille_name:
+                    sous_famille_obj = self._get_or_create_instance(
+                        SousFamille,
+                        'sousFamille',
+                        sous_famille_name,
+                        parent=famille_obj,
+                        parent_field='famille',
+                        create_if_not_exists=True
+                    )
+
+                prix_vente = product.get("prixVenteTTC", 0)
                 if isinstance(prix_vente, str):
                     prix_vente = float(prix_vente.replace(',', '.'))
 
                 product_data = {
                     "reference": product.get("reference"),
-                    "type": product.get("type"),
-                    "codeBarres": product.get("codeBarres"),
-                    "uniteType": product.get("uniteType"),
-                    "prixVenteTTC": prix_vente if prix_vente else 0,
+                    "type": type_obj.id if type_obj else None,
+                    "codeBarres": product.get("codeBarres") or "",
+                    "uniteType": unite_obj.id if unite_obj else None,
+                    "prixVenteTTC": prix_vente,
                     "description": product.get("description") or "",
                     "categorie": categorie.idCategorie if categorie else None,
-                    "champsPersonnalises": champs_personnalises_data
+                    "champsPersonnalises": {
+                        "sousCategorie": sous_categorie.idSousCategorie if sous_categorie else None,
+                        "marque": marque_obj.idMarque if marque_obj else None,
+                        "model": model_obj.idModel if model_obj else None,
+                        "famille": famille_obj.idFamille if famille_obj else None,
+                        "sousFamille": sous_famille_obj.idSousFamille if sous_famille_obj else None,
+                        "taille": champs_data.get('taille') or None,
+                        "couleur": champs_data.get('couleur') or None,
+                        "poids": champs_data.get('poids') or None,
+                        "volume": champs_data.get('volume') or None,
+                        "dimensions": champs_data.get('dimensions') or None
+                    }
                 }
 
                 serializer = ProduitCreateUpdateSerializer(data=product_data)

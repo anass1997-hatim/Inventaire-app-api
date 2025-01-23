@@ -4,7 +4,7 @@ from django.urls import path, include
 from .views import (
     ProduitViewSet, CategorieViewSet, ChampsPersonnalisesViewSet,
     SousCategorieViewSet, FamilleViewSet, SousFamilleViewSet,
-    MarqueViewSet, ModelViewSet , BulkUploadView
+    MarqueViewSet, ModelViewSet, BulkUploadView, TypeProduitViewSet, UniteTypeViewSet
 )
 
 # Main router
@@ -17,7 +17,8 @@ router.register(r'sous-familles', SousFamilleViewSet, basename='sous-familles')
 router.register(r'marques', MarqueViewSet, basename='marques')
 router.register(r'modeles', ModelViewSet, basename='modeles')
 router.register(r'sous-categories', SousCategorieViewSet, basename='sous-categories')
-
+router.register(r'types-produit', TypeProduitViewSet, basename='types-produit')
+router.register(r'unites-type', UniteTypeViewSet, basename='unites-type')
 
 categories_router = NestedSimpleRouter(router, r'categories', lookup='categorie')
 categories_router.register(r'sous-categories', SousCategorieViewSet, basename='categorie-sous-categories')

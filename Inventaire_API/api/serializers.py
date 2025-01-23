@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from .models import (
     Produit, Categorie, ChampsPersonnalises,
-    SousCategorie, Famille, SousFamille, Marque, Model
+    SousCategorie, Famille, SousFamille, Marque, Model, TypeProduit, UniteType
 )
 
 class SousCategorieSerializer(serializers.ModelSerializer):
@@ -31,6 +31,16 @@ class ModelSerializer(serializers.ModelSerializer):
         model = Model
         fields = ['idModel', 'model', 'marque']
 
+class TypeProduitSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TypeProduit
+        fields = ['id', 'nom']
+
+class UniteTypeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UniteType
+        fields = ['id', 'nom']
+
 class ChampsPersonnalisesSerializer(serializers.ModelSerializer):
     sousCategorie = SousCategorieSerializer(read_only=True)
     marque = MarqueSerializer(read_only=True)
@@ -52,6 +62,8 @@ class CategorieSerializer(serializers.ModelSerializer):
 class ProduitSerializer(serializers.ModelSerializer):
     categorie = CategorieSerializer(read_only=True)
     champsPersonnalises = ChampsPersonnalisesSerializer(read_only=True)
+    type = TypeProduitSerializer(read_only=True)
+    uniteType = UniteTypeSerializer(read_only=True)
     class Meta:
         model = Produit
         fields = [
@@ -89,6 +101,8 @@ class ChampsPersonnalisesCreateUpdateSerializer(serializers.ModelSerializer):
 
 class ProduitCreateUpdateSerializer(serializers.ModelSerializer):
     champsPersonnalises = ChampsPersonnalisesCreateUpdateSerializer(required=False)
+    type = serializers.PrimaryKeyRelatedField(queryset=TypeProduit.objects.all())
+    uniteType = serializers.PrimaryKeyRelatedField(queryset=UniteType.objects.all())
     class Meta:
         model = Produit
         fields = [
