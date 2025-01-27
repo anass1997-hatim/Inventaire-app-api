@@ -1,15 +1,21 @@
 import logging
-from psycopg2 import IntegrityError
+
+from django.http import JsonResponse
+from django.views import View
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.viewsets import ModelViewSet
-from .models import Produit, Categorie, ChampsPersonnalises, SousCategorie, Famille, SousFamille, Marque, Model, TypeProduit, UniteType
+from .models import Produit, Categorie, ChampsPersonnalises, SousCategorie, Famille, SousFamille, Marque, Model, \
+    TypeProduit, UniteType, TagTid
 from .serializers import (
     ProduitSerializer, ProduitCreateUpdateSerializer, CategorieSerializer,
     ChampsPersonnalisesSerializer, SousCategorieSerializer,
-    FamilleSerializer, SousFamilleSerializer, MarqueSerializer, ModelSerializer, TypeProduitSerializer, UniteTypeSerializer
+    FamilleSerializer, SousFamilleSerializer, MarqueSerializer, ModelSerializer, TypeProduitSerializer,
+    UniteTypeSerializer, TagTidSerializer, ProductSuggestionSerializer
 )
+from .services.services import search_product_suggestions
+
 
 class ProduitViewSet(viewsets.ModelViewSet):
     queryset = Produit.objects.all()
@@ -271,3 +277,19 @@ class BulkUploadView(APIView):
             },
             status=status.HTTP_201_CREATED
         )
+
+
+
+class TagTidViewSet(ModelViewSet):
+    serializer_class = TagTidSerializer
+    def get_queryset(self):
+        return TagTid.objects.all().order_by('tid')
+
+
+
+class ProductSearchView(View):
+    def get(self, request, *args, **kwargs):
+        query = request.GET.get('q', '')
+        suggestions = search_product_suggestions(query)
+        serializer = ProductSuggestionSerializer(suggestions, many=True)
+        return JsonResponse(serializer.data, safe=False)

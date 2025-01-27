@@ -1,4 +1,17 @@
 from django.db import models
+
+
+class TagTid(models.Model):
+    tid = models.CharField(max_length=128, unique=True, help_text="Tag Identifier (unique and immutable)")
+    epc = models.CharField(max_length=128, unique=True, help_text="Electronic Product Code (programmable)")
+    user= models.TextField(blank=True, null=True, help_text="Optional user-defined data stored in the tag")
+    def _str_(self):
+        return f"TID: {self.tid}, EPC: {self.epc}"
+
+    class Meta:
+        db_table = "tagTid"
+
+
 class TypeProduit(models.Model):
     nom = models.CharField(max_length=50, unique=True)
 

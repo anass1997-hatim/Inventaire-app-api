@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from .models import (
     Produit, Categorie, ChampsPersonnalises,
-    SousCategorie, Famille, SousFamille, Marque, Model, TypeProduit, UniteType
+    SousCategorie, Famille, SousFamille, Marque, Model, TypeProduit, UniteType, TagTid
 )
 
 class SousCategorieSerializer(serializers.ModelSerializer):
@@ -159,3 +159,23 @@ class ProduitCreateUpdateSerializer(serializers.ModelSerializer):
 
         instance.save()
         return instance
+
+
+
+
+class TagTidSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TagTid
+        fields = ['tid', 'epc', 'user']
+
+
+
+class ProductSuggestionSerializer(serializers.Serializer):
+    reference = serializers.CharField()
+    description = serializers.CharField()
+    price = serializers.DecimalField(max_digits=10, decimal_places=2)
+    category = serializers.CharField(allow_null=True)
+    brand = serializers.CharField(allow_null=True)
+    model = serializers.CharField(allow_null=True)
+    type = serializers.CharField(allow_null=True)
+    unit_type = serializers.CharField(allow_null=True)

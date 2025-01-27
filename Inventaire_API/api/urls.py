@@ -4,7 +4,7 @@ from django.urls import path, include
 from .views import (
     ProduitViewSet, CategorieViewSet, ChampsPersonnalisesViewSet,
     SousCategorieViewSet, FamilleViewSet, SousFamilleViewSet,
-    MarqueViewSet, ModelViewSet, BulkUploadView, TypeProduitViewSet, UniteTypeViewSet
+    MarqueViewSet, ModelViewSet, BulkUploadView, TypeProduitViewSet, UniteTypeViewSet, TagTidViewSet, ProductSearchView
 )
 
 # Main router
@@ -29,8 +29,13 @@ familles_router.register(r'sous-familles', SousFamilleViewSet, basename='famille
 marques_router = NestedSimpleRouter(router, r'marques', lookup='marque')
 marques_router.register(r'modeles', ModelViewSet, basename='marque-modeles')
 
+
+router.register(r'tagtid', TagTidViewSet, basename='tagtid')
+
+
 urlpatterns = [
     path('produits/bulk-upload/', BulkUploadView.as_view(), name='bulk-upload'),
+    path('rechercher/', ProductSearchView.as_view(), name='product_search'),
     path('', include(router.urls)),
     path('', include(categories_router.urls)),
     path('', include(familles_router.urls)),
